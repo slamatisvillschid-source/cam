@@ -1,21 +1,186 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="id">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Teachable Machine x Arduino</title>
-    
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
-    <script src="https://unpkg.com/ml5@latest/dist/ml5.min.js"></script>
-    <script src="https://unpkg.com/p5.webserial@0.1.1/dist/p5.webserial.js"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Teachable Machine to Arduino</title>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/addons/p5.sound.min.js"></script>
+  <script src="https://unpkg.com/ml5@latest/dist/ml5.min.js"></script>
+  <script src="https://unpkg.com/p5.webserial@0.1.1/dist/p5.webserial.js"></script>
+
+  <style>
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background-color: #f0f2f5;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px;
+    }
+    h1 { color: #333; margin-bottom: 10px; }
+    #canvas-container {
+      border: 5px solid #333;
+      border-radius: 10px;
+      overflow: hidden;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    }
+    .controls {
+      margin-top: 20px;
+      padding: 15px;
+      background: white;
+      border-radius: 8px;
+      text-align: center;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+    button {
+      background-color: #007bff;
+      color: white;
+      border: none;
+      padding: 10px 20px;
+      border-radius: 5px;
+      font-size: 16px;
+      cursor: pointer;
+      transition: background 0.3s;
+    }
+    button:hover { background-color: #0056b3; }
+    p { margin: 10px 0; font-size: 18px; }
+    .status-box { font-weight: bold; color: #555; }
+  </style>
 </head>
+
 <body>
-    <h2>Deteksi Objek -> Arduino LED</h2>
-    <div id="canvas-container"></div>
-    <p id="status">Status: Menunggu Model...</p>
-    <hr>
-    <button id="btn-konek">Hubungkan Arduino</button>
+
+  <h1>Deteksi Objek & Arduino</h1>
+  
+  <div id="canvas-container"></div>
+
+  <div class="controls">
+    <p class="status-box" id="status-info">Status: Memuat Model...</p>
+    <button id="connectBtn">Hubungkan ke Arduino</button>
+    <p>Hasil Deteksi: <span id="label-result" style="color: blue; font-weight: bold;">-</span></p>
+  </div>
+
+  <script>
+    // ==========================================
+    // BAGIAN PENGATURAN (SILAKAN DIEDIT)
+    // ==========================================
     
-    <script src="sketch.js"></script>
+    // Ganti dengan Link Model Teachable Machine Anda
+    // Jangan lupa akhiri dengan tanda garis miring '/'
+    let imageModelURL = 'https://teachablemachine.withgoogle.com/models/vPXVc1vDm/';
+
+    // Pastikan nama ini SAMA PERSIS dengan label di Teachable Machine
+    let labelObject = "Ada Objek";      // Label ketika objek dideteksi
+    let labelNoObject = "Tidak Ada Objek"; // Label ketika kosong
+
+    // ==========================================
+    // LOGIKA PROGRAM
+    // ==========================================
+    
+    let classifier;
+    let video;
+    let flippedVideo;
+    let label = "";
+    let confidence = 0.0;
+    
+    // Variabel Serial
+    let port;
+    let connectBtn;
+
+    // 1. Memuat Model sebelum aplikasi mulai
+    function preload() {
+      classifier = ml5.imageClassifier(imageModelURL + 'model.json');
+    }
+
+    // 2. Setup Awal (Dijalankan sekali)
+    function setup() {
+      // Membuat Canvas video
+      let canvas = createCanvas(320, 260);
+      canvas.parent('canvas-container');
+
+      // Mengaktifkan Webcam
+      video = createCapture(VIDEO);
+      video.size(320, 240);
+      video.hide();
+
+      flippedVideo = ml5.flipImage(video);
+
+      // Setup Web Serial untuk Arduino
+      port = createSerial();
+
+      // Setup Tombol Koneksi
+      connectBtn = select('#connectBtn');
+      connectBtn.mousePressed(connectToArduino);
+
+      // Mulai Klasifikasi
+      classifyVideo();
+      
+      select('#status-info').html("Status: Model Siap! Silakan Hubungkan Arduino.");
+    }
+
+    // 3. Loop Gambar (Dijalankan terus menerus)
+    function draw() {
+      background(0);
+      
+      // Menggambar video webcam ke canvas
+      image(flippedVideo, 0, 0);
+
+      // Menampilkan Label di Canvas
+      fill(255);
+      textSize(16);
+      textAlign(CENTER);
+      text(label, width / 2, height - 20);
+
+      // Update teks di HTML
+      select('#label-result').html(label + ` (${(confidence * 100).toFixed(0)}%)`);
+
+      // === LOGIKA PENGIRIMAN DATA KE ARDUINO ===
+      // Kita kirim data hanya jika port terbuka dan akurasi tinggi (> 80%)
+      if (port.opened() && confidence > 0.8) {
+        
+        if (label === labelObject) {
+          port.write('1'); // Kirim sinyal NYALA
+        } else if (label === labelNoObject) {
+          port.write('0'); // Kirim sinyal MATI
+        }
+        
+      }
+    }
+
+    // 4. Fungsi Klasifikasi Video
+    function classifyVideo() {
+      flippedVideo = ml5.flipImage(video);
+      classifier.classify(flippedVideo, gotResult);
+    }
+
+    // 5. Fungsi ketika hasil deteksi didapat
+    function gotResult(error, results) {
+      if (error) {
+        console.error(error);
+        return;
+      }
+      // Simpan hasil label dan confidence
+      label = results[0].label;
+      confidence = results[0].confidence;
+      
+      // Lakukan klasifikasi lagi (looping)
+      classifyVideo();
+    }
+
+    // 6. Fungsi Koneksi ke Arduino
+    function connectToArduino() {
+      if (!port.opened()) {
+        port.open(9600); // Membuka port dengan baud rate 9600
+        connectBtn.html('Putuskan Arduino');
+        connectBtn.style('background-color', '#dc3545'); // Ubah warna jadi merah
+      } else {
+        port.close();
+        connectBtn.html('Hubungkan ke Arduino');
+        connectBtn.style('background-color', '#007bff'); // Ubah warna jadi biru
+      }
+    }
+  </script>
 </body>
 </html>
