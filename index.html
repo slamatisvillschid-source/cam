@@ -1,187 +1,214 @@
 <!DOCTYPE html>
 <html lang="id">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Teachable Machine to Arduino</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Deteksi Objek - Teachable Machine</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: #f0f2f5;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+        }
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/addons/p5.sound.min.js"></script>
-  <script src="https://unpkg.com/ml5@latest/dist/ml5.min.js"></script>
-  <script src="https://unpkg.com/p5.webserial@0.1.1/dist/p5.webserial.js"></script>
+        .container {
+            background: white;
+            padding: 2rem;
+            border-radius: 15px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            text-align: center;
+            width: 90%;
+            max-width: 400px;
+        }
 
-  <style>
-    body {
-      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-      background-color: #f0f2f5;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      padding: 20px;
-    }
-    h1 { color: #333; margin-bottom: 10px; }
-    #canvas-container {
-      border: 5px solid #333;
-      border-radius: 10px;
-      overflow: hidden;
-      box-shadow: 0 4px 15px rgba(0,0,0,0.2);
-    }
-    .controls {
-      margin-top: 20px;
-      padding: 15px;
-      background: white;
-      border-radius: 8px;
-      text-align: center;
-      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-    }
-    button {
-      background-color: #007bff;
-      color: white;
-      border: none;
-      padding: 10px 20px;
-      border-radius: 5px;
-      font-size: 16px;
-      cursor: pointer;
-      transition: background 0.3s;
-    }
-    button:hover { background-color: #0056b3; }
-    p { margin: 10px 0; font-size: 18px; }
-    .status-box { font-weight: bold; color: #555; }
-  </style>
+        h1 { color: #333; font-size: 1.5rem; margin-bottom: 1rem; }
+
+        button {
+            background-color: #007bff;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            font-size: 1rem;
+            cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        button:hover { background-color: #0056b3; }
+
+        #webcam-container {
+            margin-top: 20px;
+            border-radius: 10px;
+            overflow: hidden;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+        }
+
+        #label-container {
+            margin-top: 20px;
+            width: 100%;
+        }
+
+        .label-item {
+            background: #e9ecef;
+            margin: 5px 0;
+            padding: 10px;
+            border-radius: 5px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .progress-bar-bg {
+            width: 60%;
+            height: 10px;
+            background-color: #d1d1d1;
+            border-radius: 5px;
+            overflow: hidden;
+        }
+
+        .progress-bar-fill {
+            height: 100%;
+            background-color: #28a745;
+            width: 0%;
+            transition: width 0.1s;
+        }
+
+        .status-text {
+            font-weight: bold;
+            margin-top: 15px;
+            padding: 10px;
+            border-radius: 5px;
+            color: white;
+            display: none; /* Sembunyikan saat awal */
+        }
+    </style>
 </head>
-
 <body>
 
-  <h1>Deteksi Objek & Arduino</h1>
-  
-  <div id="canvas-container"></div>
-
-  <div class="controls">
-    <p class="status-box" id="status-info">Status: Memuat Model...</p>
-    <button id="connectBtn">Hubungkan ke Arduino</button>
-    <p>Hasil Deteksi: <span id="label-result" style="color: blue; font-weight: bold;">-</span></p>
-  </div>
-
-  <script>
-    // ==========================================
-    // BAGIAN PENGATURAN (SILAKAN DIEDIT)
-    // ==========================================
-    
-    // Ganti dengan Link Model Teachable Machine Anda
-    // Jangan lupa akhiri dengan tanda garis miring '/'
-    let imageModelURL = 'https://teachablemachine.withgoogle.com/models/vPXVc1vDm/';
-
-    // Pastikan nama ini SAMA PERSIS dengan label di Teachable Machine
-    let labelObject = "Ada Objek";      // Label ketika objek dideteksi
-    let labelNoObject = "Tidak Ada Objek"; // Label ketika kosong
-
-    // ==========================================
-    // LOGIKA PROGRAM
-    // ==========================================
-    
-    let classifier;
-    let video;
-    let flippedVideo;
-    let label = "";
-    let confidence = 0.0;
-    
-    // Variabel Serial
-    let port;
-    let connectBtn;
-
-    // 1. Memuat Model sebelum aplikasi mulai
-    function preload() {
-      classifier = ml5.imageClassifier(imageModelURL + 'model.json');
-    }
-
-    // 2. Setup Awal (Dijalankan sekali)
-    function setup() {
-      // Membuat Canvas video
-      let canvas = createCanvas(320, 260);
-      canvas.parent('canvas-container');
-
-      // Mengaktifkan Webcam
-      video = createCapture(VIDEO);
-      video.size(320, 240);
-      video.hide();
-
-      flippedVideo = ml5.flipImage(video);
-
-      // Setup Web Serial untuk Arduino
-      port = createSerial();
-
-      // Setup Tombol Koneksi
-      connectBtn = select('#connectBtn');
-      connectBtn.mousePressed(connectToArduino);
-
-      // Mulai Klasifikasi
-      classifyVideo();
-      
-      select('#status-info').html("Status: Model Siap! Silakan Hubungkan Arduino.");
-    }
-
-    // 3. Loop Gambar (Dijalankan terus menerus)
-    function draw() {
-      background(0);
-      
-      // Menggambar video webcam ke canvas
-      image(flippedVideo, 0, 0);
-
-      // Menampilkan Label di Canvas
-      fill(255);
-      textSize(16);
-      textAlign(CENTER);
-      text(label, width / 2, height - 20);
-
-      // Update teks di HTML
-      select('#label-result').html(label + ` (${(confidence * 100).toFixed(0)}%)`);
-
-      // === LOGIKA PENGIRIMAN DATA KE ARDUINO ===
-      // Kita kirim data hanya jika port terbuka dan akurasi tinggi (> 80%)
-      if (port.opened() && confidence > 0.8) {
+    <div class="container">
+        <h1>Detektor Objek</h1>
+        <p>Tekan tombol untuk memulai kamera</p>
+        <button type="button" onclick="init()">Mulai Deteksi</button>
         
-        if (label === labelObject) {
-          port.write('1'); // Kirim sinyal NYALA
-        } else if (label === labelNoObject) {
-          port.write('0'); // Kirim sinyal MATI
+        <div id="webcam-container"></div>
+        
+        <div id="main-status" class="status-text">Menunggu...</div>
+
+        <div id="label-container"></div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
+    
+    <script type="text/javascript">
+        // -----------------------------------------------------------
+        // PENTING: Ganti URL di bawah ini dengan Link Model Anda!
+        // -----------------------------------------------------------
+        const URL = "https://teachablemachine.withgoogle.com/models/vPXVc1vDm/"; 
+
+        let model, webcam, labelContainer, maxPredictions;
+
+        // Fungsi inisialisasi
+        async function init() {
+            const modelURL = URL + "model.json";
+            const metadataURL = URL + "metadata.json";
+
+            try {
+                // Memuat model dan metadata
+                model = await tmImage.load(modelURL, metadataURL);
+                maxPredictions = model.getTotalClasses();
+
+                // Menyiapkan Webcam
+                const flip = true; // Cermin kamera
+                webcam = new tmImage.Webcam(300, 300, flip); 
+                await webcam.setup(); // Request akses kamera
+                await webcam.play();
+                window.requestAnimationFrame(loop);
+
+                // Menambahkan elemen webcam ke DOM
+                document.getElementById("webcam-container").innerHTML = "";
+                document.getElementById("webcam-container").appendChild(webcam.canvas);
+
+                // Menyiapkan label container
+                labelContainer = document.getElementById("label-container");
+                labelContainer.innerHTML = ""; // Bersihkan isi lama
+                
+                for (let i = 0; i < maxPredictions; i++) {
+                    // Membuat elemen HTML untuk setiap kelas
+                    const div = document.createElement("div");
+                    div.className = "label-item";
+                    div.innerHTML = `
+                        <span id="label-${i}">Class</span>
+                        <div class="progress-bar-bg">
+                            <div id="bar-${i}" class="progress-bar-fill"></div>
+                        </div>
+                        <span id="percent-${i}">0%</span>
+                    `;
+                    labelContainer.appendChild(div);
+                }
+            } catch (error) {
+                alert("Error: Pastikan URL Model benar dan Kamera diizinkan.\n" + error);
+            }
         }
-        
-      }
-    }
 
-    // 4. Fungsi Klasifikasi Video
-    function classifyVideo() {
-      flippedVideo = ml5.flipImage(video);
-      classifier.classify(flippedVideo, gotResult);
-    }
+        // Loop animasi webcam
+        async function loop() {
+            webcam.update(); // update frame webcam
+            await predict();
+            window.requestAnimationFrame(loop);
+        }
 
-    // 5. Fungsi ketika hasil deteksi didapat
-    function gotResult(error, results) {
-      if (error) {
-        console.error(error);
-        return;
-      }
-      // Simpan hasil label dan confidence
-      label = results[0].label;
-      confidence = results[0].confidence;
-      
-      // Lakukan klasifikasi lagi (looping)
-      classifyVideo();
-    }
+        // Fungsi prediksi
+        async function predict() {
+            // predict dapat mengambil image, video, atau canvas html element
+            const prediction = await model.predict(webcam.canvas);
 
-    // 6. Fungsi Koneksi ke Arduino
-    function connectToArduino() {
-      if (!port.opened()) {
-        port.open(9600); // Membuka port dengan baud rate 9600
-        connectBtn.html('Putuskan Arduino');
-        connectBtn.style('background-color', '#dc3545'); // Ubah warna jadi merah
-      } else {
-        port.close();
-        connectBtn.html('Hubungkan ke Arduino');
-        connectBtn.style('background-color', '#007bff'); // Ubah warna jadi biru
-      }
-    }
-  </script>
+            let highestProb = 0;
+            let bestLabel = "";
+
+            for (let i = 0; i < maxPredictions; i++) {
+                const classPrediction = prediction[i].className;
+                const probability = prediction[i].probability.toFixed(2);
+                const percent = Math.round(probability * 100) + "%";
+
+                // Update teks dan progress bar
+                document.getElementById("label-" + i).innerText = classPrediction;
+                document.getElementById("percent-" + i).innerText = percent;
+                document.getElementById("bar-" + i).style.width = percent;
+
+                // Logika menentukan status utama (yang paling tinggi)
+                if (prediction[i].probability > highestProb) {
+                    highestProb = prediction[i].probability;
+                    bestLabel = classPrediction;
+                }
+            }
+
+            updateMainStatus(bestLabel, highestProb);
+        }
+
+        // Fungsi mempercantik status utama
+        function updateMainStatus(label, prob) {
+            const statusDiv = document.getElementById("main-status");
+            statusDiv.style.display = "block";
+            
+            if (prob > 0.8) { // Jika akurasi di atas 80%
+                statusDiv.innerText = "Hasil: " + label;
+                if (label.toLowerCase().includes("tidak ada")) {
+                    statusDiv.style.backgroundColor = "#dc3545"; // Merah
+                } else {
+                    statusDiv.style.backgroundColor = "#28a745"; // Hijau
+                }
+            } else {
+                statusDiv.innerText = "Tidak yakin...";
+                statusDiv.style.backgroundColor = "#ffc107"; // Kuning
+                statusDiv.style.color = "black";
+            }
+        }
+    </script>
 </body>
 </html>
-
