@@ -3,11 +3,11 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Teachable Machine + Arduino</title>
+    <title>Smart Door Lock - Teachable Machine</title>
     <style>
         body {
             font-family: 'Segoe UI', sans-serif;
-            background-color: #f0f2f5;
+            background-color: #eef2f3;
             display: flex;
             flex-direction: column;
             align-items: center;
@@ -18,126 +18,116 @@
         .container {
             background: white;
             padding: 2rem;
-            border-radius: 15px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            border-radius: 20px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.1);
             text-align: center;
             width: 90%;
             max-width: 450px;
         }
 
-        .btn-group { display: flex; gap: 10px; justify-content: center; margin-bottom: 15px; }
+        h1 { margin-bottom: 0.5rem; color: #333; }
+        p { color: #666; margin-bottom: 1.5rem; }
+
+        .btn-group { display: flex; gap: 10px; justify-content: center; margin-bottom: 20px; }
 
         button {
-            padding: 10px 20px;
-            border-radius: 5px;
-            font-size: 1rem;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-weight: bold;
             cursor: pointer;
             border: none;
             color: white;
-            transition: 0.3s;
+            transition: transform 0.2s;
         }
+        button:active { transform: scale(0.95); }
 
-        .btn-start { background-color: #007bff; }
-        .btn-start:hover { background-color: #0056b3; }
-
-        .btn-connect { background-color: #6610f2; }
-        .btn-connect:hover { background-color: #520dc2; }
+        .btn-cam { background-color: #007bff; }
+        .btn-ard { background-color: #fd7e14; }
 
         #webcam-container {
-            border-radius: 10px;
+            border-radius: 12px;
             overflow: hidden;
             margin: 0 auto;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+            border: 2px solid #ddd;
         }
 
-        .status-text {
-            margin-top: 15px;
-            padding: 10px;
-            border-radius: 5px;
-            color: white;
+        /* Status Box Pintu */
+        .door-status {
+            margin-top: 20px;
+            padding: 15px;
+            border-radius: 10px;
+            font-size: 1.2rem;
             font-weight: bold;
-            display: none;
+            color: white;
+            background-color: #6c757d; /* Abu-abu default */
+            transition: background-color 0.3s;
         }
-        
-        .arduino-status {
-            margin-top: 10px;
-            font-size: 0.9rem;
-            color: #666;
-        }
+
+        .arduino-log { font-size: 0.8rem; color: #888; margin-top: 10px; }
     </style>
 </head>
 <body>
 
     <div class="container">
-        <h1>Deteksi Objek ke Arduino</h1>
+        <h1>Smart Door Lock</h1>
+        <p>Buka pintu dengan deteksi visual</p>
         
         <div class="btn-group">
-            <button class="btn-start" onclick="init()">1. Mulai Kamera</button>
-            <button class="btn-connect" onclick="connectArduino()">2. Hubungkan Arduino</button>
+            <button class="btn-cam" onclick="init()">📷 Buka Kamera</button>
+            <button class="btn-ard" onclick="connectArduino()">🔌 Hubungkan Arduino</button>
         </div>
 
-        <div id="arduino-msg" class="arduino-status">Arduino belum terhubung</div>
-        
         <div id="webcam-container"></div>
-        <div id="main-status" class="status-text">Menunggu...</div>
-        <div id="label-container" style="margin-top:10px; text-align:left;"></div>
-    </div>
+        
+        <div id="door-indicator" class="door-status">SISTEM OFFLINE</div>
+        
+        <div id="arduino-msg" class="arduino-log">Arduino belum terhubung</div>
+        <div id="label-container" style="display:none;"></div> </div>
 
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest/dist/tf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@teachablemachine/image@latest/dist/teachablemachine-image.min.js"></script>
     
     <script type="text/javascript">
         // -----------------------------------------------------------
-        // GANTI URL INI DENGAN MODEL ANDA
+        // ⚠️ GANTI URL INI DENGAN LINK MODEL ANDA
         // -----------------------------------------------------------
         const URL = "https://teachablemachine.withgoogle.com/models/vPXVc1vDm/"; 
 
-        let model, webcam, labelContainer, maxPredictions;
-        
-        // Variabel untuk Serial Arduino
-        let port;
-        let writer;
-        let lastSentState = ""; // Untuk mencegah pengiriman data berulang
+        let model, webcam, maxPredictions;
+        let port, writer;
+        let lastSentState = ""; 
 
-        // 1. Fungsi Koneksi ke Arduino (Web Serial API)
+        // Fungsi Koneksi Serial
         async function connectArduino() {
             if ("serial" in navigator) {
                 try {
-                    // Meminta user memilih port COM
                     port = await navigator.serial.requestPort();
-                    // Membuka port dengan baudRate 9600 (harus sama dengan Sketch Arduino)
                     await port.open({ baudRate: 9600 });
                     
                     const textEncoder = new TextEncoderStream();
                     const writableStreamClosed = textEncoder.readable.pipeTo(port.writable);
                     writer = textEncoder.writable.getWriter();
 
-                    document.getElementById("arduino-msg").innerText = "✅ Arduino Terhubung!";
+                    document.getElementById("arduino-msg").innerText = "✅ Arduino Terhubung & Siap";
                     document.getElementById("arduino-msg").style.color = "green";
                 } catch (err) {
-                    console.error("Gagal connect serial:", err);
-                    alert("Gagal koneksi ke Arduino. Pastikan tidak sedang dibuka di Serial Monitor lain.");
+                    alert("Gagal koneksi. Cek kabel atau tutup Serial Monitor Arduino IDE.");
                 }
             } else {
-                alert("Browser ini tidak mendukung Web Serial API. Gunakan Chrome atau Edge.");
+                alert("Browser tidak support Serial API.");
             }
         }
 
-        // Fungsi Mengirim Data ke Arduino
-        async function sendToArduino(data) {
-            // Hanya kirim jika writer siap dan data BERBEDA dari sebelumnya
-            if (writer && data !== lastSentState) {
+        async function sendToArduino(signal) {
+            if (writer && signal !== lastSentState) {
                 try {
-                    await writer.write(data);
-                    lastSentState = data; // Update status terakhir
-                    console.log("Mengirim ke Arduino:", data);
-                } catch (e) {
-                    console.log(e);
-                }
+                    await writer.write(signal);
+                    lastSentState = signal;
+                    console.log("Mengirim sinyal:", signal);
+                } catch (e) { console.error(e); }
             }
         }
 
-        // 2. Fungsi Utama Teachable Machine
         async function init() {
             const modelURL = URL + "model.json";
             const metadataURL = URL + "metadata.json";
@@ -152,10 +142,11 @@
             window.requestAnimationFrame(loop);
 
             document.getElementById("webcam-container").appendChild(webcam.canvas);
-            labelContainer = document.getElementById("label-container");
-            for (let i = 0; i < maxPredictions; i++) {
-                labelContainer.appendChild(document.createElement("div"));
-            }
+            
+            // Ubah status awal
+            const doorStatus = document.getElementById("door-indicator");
+            doorStatus.innerText = "MEMINDAI...";
+            doorStatus.style.backgroundColor = "#17a2b8";
         }
 
         async function loop() {
@@ -169,37 +160,36 @@
             let highestProb = 0;
             let bestLabel = "";
 
+            // Cari probabilitas tertinggi
             for (let i = 0; i < maxPredictions; i++) {
-                const classPrediction = prediction[i].className + ": " + prediction[i].probability.toFixed(2);
-                labelContainer.childNodes[i].innerHTML = classPrediction;
-
                 if (prediction[i].probability > highestProb) {
                     highestProb = prediction[i].probability;
                     bestLabel = prediction[i].className;
                 }
             }
 
-            // Visualisasi & Logika Arduino
-            const statusDiv = document.getElementById("main-status");
-            statusDiv.style.display = "block";
+            const doorStatus = document.getElementById("door-indicator");
 
-            // LOGIKA PENGIRIMAN DATA (Threshold 0.85 atau 85%)
+            // Ambang batas keyakinan (85%)
             if (highestProb > 0.85) {
-                statusDiv.innerText = bestLabel;
                 
-                // --- SESUAIKAN NAMA KELAS DI SINI ---
-                // Pastikan string ini SAMA PERSIS dengan nama kelas di Teachable Machine
+                // --- SESUAIKAN LOGIKA NAMA CLASS DI SINI ---
                 if (bestLabel === "Ada Objek") { 
-                    statusDiv.style.backgroundColor = "#28a745"; // Hijau
-                    sendToArduino("1"); // Kirim '1' ke Arduino
+                    doorStatus.innerText = "🔓 PINTU TERBUKA";
+                    doorStatus.style.backgroundColor = "#28a745"; // Hijau
+                    sendToArduino("1"); 
                 } 
                 else if (bestLabel === "Tidak Ada Objek") {
-                    statusDiv.style.backgroundColor = "#dc3545"; // Merah
-                    sendToArduino("0"); // Kirim '0' ke Arduino
+                    doorStatus.innerText = "🔒 PINTU TERTUTUP";
+                    doorStatus.style.backgroundColor = "#dc3545"; // Merah
+                    sendToArduino("0"); 
                 }
+
             } else {
-                statusDiv.innerText = "Mencari...";
-                statusDiv.style.backgroundColor = "grey";
+                // Jika tidak yakin, jangan ubah status fisik (safety)
+                doorStatus.innerText = "❓ TIDAK YAKIN";
+                doorStatus.style.backgroundColor = "#ffc107";
+                doorStatus.style.color = "black";
             }
         }
     </script>
