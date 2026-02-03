@@ -1,76 +1,21 @@
 <!DOCTYPE html>
-<html lang="id">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Servo Controller</title>
+    <title>Teachable Machine x Arduino</title>
+    
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/ml5@latest/dist/ml5.min.js"></script>
-    <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; text-align: center; background: #222; color: white; padding: 20px; }
-        #canvas-container { margin: 20px auto; border: 5px solid #007bff; border-radius: 15px; display: inline-block; overflow: hidden; }
-        .info { font-size: 24px; margin: 10px; color: #00ff00; }
-        button { padding: 15px 30px; font-size: 18px; font-weight: bold; background: #28a745; color: white; border: none; border-radius: 50px; cursor: pointer; transition: 0.3s; }
-        button:hover { background: #218838; transform: scale(1.05); }
-        .distance { color: #ffcc00; font-size: 20px; margin-top: 10px; }
-    </style>
+    <script src="https://unpkg.com/ml5@latest/dist/ml5.min.js"></script>
+    <script src="https://unpkg.com/p5.webserial@0.1.1/dist/p5.webserial.js"></script>
 </head>
 <body>
-    <h1>AI Servo Control</h1>
-    <button id="connectBtn">🔌 HUBUNGKAN ARDUINO</button>
+    <h2>Deteksi Objek -> Arduino LED</h2>
     <div id="canvas-container"></div>
-    <div class="info">Deteksi: <span id="labelText">Mencari...</span></div>
-    <div class="distance" id="distText">Jarak: -- cm</div>
-
-    <script>
-        // --- KONFIGURASI ---
-        const URL_MODEL = "https://teachablemachine.withgoogle.com/models/vPXVc1vDm/"; 
-        
-        let classifier;
-        let video;
-        let label = "";
-        let port;
-        let writer;
-
-        function preload() {
-            // Memuat model dari link yang kamu berikan
-            classifier = ml5.imageClassifier(URL_MODEL + 'model.json');
-        }
-
-        function setup() {
-            let cnv = createCanvas(320, 240);
-            cnv.parent('canvas-container');
-            video = createCapture(VIDEO);
-            video.size(320, 240);
-            video.hide();
-            classifyVideo();
-        }
-
-        function draw() {
-            image(video, 0, 0);
-        }
-
-        function classifyVideo() {
-            classifier.classify(video, gotResult);
-        }
-
-        async function gotResult(error, results) {
-            if (error) return;
-            label = results[0].label;
-            document.getElementById('labelText').innerText = label;
-
-            // KIRIM PERINTAH KE ARDUINO
-            // Sesuaikan label "Buka" dengan nama kelas di modelmu
-            if (port && port.writable) {
-                const command = (label === "Buka") ? "A" : "B"; 
-                const encoder = new TextEncoder();
-                await writer.write(encoder.encode(command));
-            }
-            classifyVideo();
-        }
-
-        // Fungsi Serial Web API
-        document.getElementById('connectBtn').addEventListener('click', async () => {
-            try {
-                port = await navigator.serial.requestPort();
-                await port.open({
+    <p id="status">Status: Menunggu Model...</p>
+    <hr>
+    <button id="btn-konek">Hubungkan Arduino</button>
+    
+    <script src="sketch.js"></script>
+</body>
+</html>
