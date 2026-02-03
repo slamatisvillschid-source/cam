@@ -3,42 +3,43 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI Arduino Controller</title>
+    <title>AI Servo Controller</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/p5.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.4.0/addons/p5.dom.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/ml5@latest/dist/ml5.min.js"></script>
     <style>
-        body { font-family: sans-serif; text-align: center; background: #f0f0f0; padding: 20px; }
-        #video-container { margin: 20px auto; border-radius: 10px; overflow: hidden; width: 320px; height: 240px; background: #000; }
-        button { padding: 10px 20px; font-size: 16px; cursor: pointer; background: #007bff; color: white; border: none; border-radius: 5px; margin: 10px; }
-        .status { font-weight: bold; font-size: 1.2em; color: #333; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; text-align: center; background: #222; color: white; padding: 20px; }
+        #canvas-container { margin: 20px auto; border: 5px solid #007bff; border-radius: 15px; display: inline-block; overflow: hidden; }
+        .info { font-size: 24px; margin: 10px; color: #00ff00; }
+        button { padding: 15px 30px; font-size: 18px; font-weight: bold; background: #28a745; color: white; border: none; border-radius: 50px; cursor: pointer; transition: 0.3s; }
+        button:hover { background: #218838; transform: scale(1.05); }
+        .distance { color: #ffcc00; font-size: 20px; margin-top: 10px; }
     </style>
 </head>
 <body>
-    <h2>AI Camera -> Arduino Servo</h2>
-    <div id="video-container"></div>
-    <p class="status">Prediksi: <span id="label">Loading...</span></p>
-    <button id="connectBtn">1. Hubungkan Arduino</button>
-    <p id="dist-label">Jarak: -- cm</p>
+    <h1>AI Servo Control</h1>
+    <button id="connectBtn">🔌 HUBUNGKAN ARDUINO</button>
+    <div id="canvas-container"></div>
+    <div class="info">Deteksi: <span id="labelText">Mencari...</span></div>
+    <div class="distance" id="distText">Jarak: -- cm</div>
 
     <script>
-        // GANTI LINK DI BAWAH INI DENGAN LINK MODEL KAMU
-        const modelURL = 'https://teachablemachine.withgoogle.com/models/vPXVc1vDm/';
+        // --- KONFIGURASI ---
+        const URL_MODEL = "https://teachablemachine.withgoogle.com/models/vPXVc1vDm/"; 
         
         let classifier;
         let video;
-        let label = "Menunggu...";
+        let label = "";
         let port;
         let writer;
-        let reader;
 
         function preload() {
-            classifier = ml5.imageClassifier(modelURL + 'model.json');
+            // Memuat model dari link yang kamu berikan
+            classifier = ml5.imageClassifier(URL_MODEL + 'model.json');
         }
 
         function setup() {
-            let canvas = createCanvas(320, 240);
-            canvas.parent('video-container');
+            let cnv = createCanvas(320, 240);
+            cnv.parent('canvas-container');
             video = createCapture(VIDEO);
             video.size(320, 240);
             video.hide();
@@ -56,43 +57,20 @@
         async function gotResult(error, results) {
             if (error) return;
             label = results[0].label;
-            document.getElementById('label').innerText = label;
+            document.getElementById('labelText').innerText = label;
 
-            // Kirim data ke Arduino via Serial
+            // KIRIM PERINTAH KE ARDUINO
+            // Sesuaikan label "Buka" dengan nama kelas di modelmu
             if (port && port.writable) {
-                const data = (label === "Buka") ? "A" : "B"; // 'A' untuk gerak, 'B' untuk diam
+                const command = (label === "Buka") ? "A" : "B"; 
                 const encoder = new TextEncoder();
-                await writer.write(encoder.encode(data));
+                await writer.write(encoder.encode(command));
             }
             classifyVideo();
         }
 
-        // Fungsi menghubungkan Serial (USB OTG)
+        // Fungsi Serial Web API
         document.getElementById('connectBtn').addEventListener('click', async () => {
             try {
                 port = await navigator.serial.requestPort();
-                await port.open({ baudRate: 9600 });
-                writer = port.writable.getWriter();
-                readData(); // Mulai membaca data ultrasonik
-                alert("Arduino Terhubung!");
-            } catch (err) {
-                console.error("Gagal terhubung:", err);
-            }
-        });
-
-        // Membaca data ultrasonik dari Arduino
-        async function readData() {
-            const textDecoder = new TextDecoder();
-            reader = port.readable.getReader();
-            while (true) {
-                const { value, done } = await reader.read();
-                if (done) break;
-                let dataString = textDecoder.decode(value);
-                if (dataString.includes("Jarak:")) {
-                    document.getElementById('dist-label').innerText = dataString;
-                }
-            }
-        }
-    </script>
-</body>
-</html>
+                await port.open({
